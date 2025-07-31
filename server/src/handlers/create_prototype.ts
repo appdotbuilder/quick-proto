@@ -1,4 +1,6 @@
 
+import { db } from '../db';
+import { prototypesTable } from '../db/schema';
 import { type CreatePrototypeInput, type Prototype, type UIConfig } from '../schema';
 
 /**
@@ -7,43 +9,44 @@ import { type CreatePrototypeInput, type Prototype, type UIConfig } from '../sch
  * The generated UI emphasizes clarity, simplicity, and efficiency similar to 37 Signals applications.
  */
 export async function createPrototype(input: CreatePrototypeInput): Promise<Prototype> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is:
-    // 1. Process the five key answers from the user
-    // 2. Generate a simple UI configuration based on those answers
-    // 3. Create a prototype record in the database
-    // 4. Return the created prototype with generated UI config
-    
+  try {
     // Generate basic UI configuration based on input
     const generatedUIConfig: UIConfig = {
-        layout: 'single-column',
-        theme: 'minimal',
-        primary_color: '#2563eb', // Simple blue color
-        components: [
-            {
-                id: 'header',
-                type: 'text',
-                label: input.title,
-                styles: { fontSize: '24px', fontWeight: 'bold' }
-            },
-            {
-                id: 'main-button',
-                type: 'button',
-                label: 'Get Started',
-                action: 'primary-action'
-            }
-        ],
-        interactions: [
-            {
-                trigger: 'main-button',
-                action: 'submit',
-                target: 'main-form'
-            }
-        ]
+      layout: 'single-column',
+      theme: 'minimal',
+      primary_color: '#2563eb', // Simple blue color
+      components: [
+        {
+          id: 'header',
+          type: 'text',
+          label: input.title,
+          styles: { fontSize: '24px', fontWeight: 'bold' }
+        },
+        {
+          id: 'description',
+          type: 'text',
+          label: input.description || 'Welcome to your prototype',
+          styles: { fontSize: '16px', color: '#666' }
+        },
+        {
+          id: 'main-button',
+          type: 'button',
+          label: 'Get Started',
+          action: 'primary-action'
+        }
+      ],
+      interactions: [
+        {
+          trigger: 'main-button',
+          action: 'submit',
+          target: 'main-form'
+        }
+      ]
     };
 
-    return Promise.resolve({
-        id: 0, // Placeholder ID
+    // Insert prototype record
+    const result = await db.insert(prototypesTable)
+      .values({
         title: input.title,
         description: input.description || null,
         target_audience: input.target_audience,
@@ -51,8 +54,14 @@ export async function createPrototype(input: CreatePrototypeInput): Promise<Prot
         key_features: input.key_features,
         user_flow: input.user_flow,
         success_metrics: input.success_metrics,
-        generated_ui_config: JSON.stringify(generatedUIConfig),
-        created_at: new Date(),
-        updated_at: new Date()
-    } as Prototype);
+        generated_ui_config: JSON.stringify(generatedUIConfig)
+      })
+      .returning()
+      .execute();
+
+    return result[0];
+  } catch (error) {
+    console.error('Prototype creation failed:', error);
+    throw error;
+  }
 }

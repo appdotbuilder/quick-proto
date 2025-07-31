@@ -1,4 +1,6 @@
 
+import { db } from '../db';
+import { prototypesTable } from '../db/schema';
 import { type Prototype } from '../schema';
 
 /**
@@ -6,8 +8,14 @@ import { type Prototype } from '../schema';
  * Returns a list of all created prototype configurations.
  */
 export async function getPrototypes(): Promise<Prototype[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is fetching all prototypes from the database
-    // to allow users to view and manage their created prototypes.
-    return [];
+  try {
+    const results = await db.select()
+      .from(prototypesTable)
+      .execute();
+
+    return results;
+  } catch (error) {
+    console.error('Failed to retrieve prototypes:', error);
+    throw error;
+  }
 }

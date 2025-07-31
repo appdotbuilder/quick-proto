@@ -1,42 +1,40 @@
 
-import { type GetPrototypeInput, type UIConfig } from '../schema';
+import { db } from '../db';
+import { prototypesTable } from '../db/schema';
+import { type GetPrototypeInput, type UIConfig, uiConfigSchema } from '../schema';
+import { eq } from 'drizzle-orm';
 
 /**
  * Generates a live preview of the prototype UI based on the stored configuration.
  * Returns structured data that can be rendered on the frontend.
  */
 export async function generateUIPreview(input: GetPrototypeInput): Promise<UIConfig> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is:
-    // 1. Fetch the prototype by ID
-    // 2. Parse the generated_ui_config JSON
-    // 3. Return the UI configuration for frontend rendering
-    // 4. Generate real-time preview data for user testing
-    
-    return Promise.resolve({
-        layout: 'single-column',
-        theme: 'minimal',
-        primary_color: '#2563eb',
-        components: [
-            {
-                id: 'preview-header',
-                type: 'text',
-                label: 'Prototype Preview',
-                styles: { fontSize: '20px', textAlign: 'center' }
-            },
-            {
-                id: 'preview-button',
-                type: 'button',
-                label: 'Interactive Button',
-                action: 'test-action'
-            }
-        ],
-        interactions: [
-            {
-                trigger: 'preview-button',
-                action: 'navigate',
-                target: 'success-page'
-            }
-        ]
-    } as UIConfig);
+  try {
+    // Fetch the prototype by ID
+    const results = await db.select()
+      .from(prototypesTable)
+      .where(eq(prototypesTable.id, input.id))
+      .execute();
+
+    if (results.length === 0) {
+      throw new Error(`Prototype with ID ${input.id} not found`);
+    }
+
+    const prototype = results[0];
+
+    // Parse the generated_ui_config JSON
+    let uiConfig: UIConfig;
+    try {
+      const parsedConfig = JSON.parse(prototype.generated_ui_config);
+      uiConfig = uiConfigSchema.parse(parsedConfig);
+    } catch (parseError) {
+      console.error('Failed to parse UI config:', parseError);
+      throw new Error('Invalid UI configuration format');
+    }
+
+    return uiConfig;
+  } catch (error) {
+    console.error('UI preview generation failed:', error);
+    throw error;
+  }
 }
