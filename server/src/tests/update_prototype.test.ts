@@ -7,145 +7,233 @@ import { type UpdatePrototypeInput, type CreatePrototypeInput } from '../schema'
 import { updatePrototype } from '../handlers/update_prototype';
 import { eq } from 'drizzle-orm';
 
-// Helper function to create a test prototype
-const createTestPrototype = async () => {
-  const testData = {
-    title: 'Original Title',
-    description: 'Original description',
-    target_audience: 'Original audience',
-    primary_goal: 'Original goal',
-    key_features: 'Original features',
-    user_flow: 'Original flow',
-    success_metrics: 'Original metrics',
-    generated_ui_config: '{"layout":"single-column","theme":"minimal"}'
-  };
+// Test input for creating initial prototype
+const createTestInput: CreatePrototypeInput = {
+  problem_or_goal_answer: 'El problema principal es gestionar tareas de manera eficiente',
+  content_elements_answer: 'Necesito mostrar una lista de tareas pendientes',
+  call_to_action_answer: 'El usuario debe poder agregar nueva tarea',
+  visual_elements_answer: 'Un icono de check para completar tareas',
+  atmosphere_answer: 'Interfaz limpia y profesional con colores azules'
+};
 
-  const result = await db.insert(prototypesTable)
-    .values(testData)
-    .returning()
-    .execute();
-
-  return result[0];
+// Test input for updates
+const updateTestInput: UpdatePrototypeInput = {
+  id: 1,
+  problem_or_goal_answer: 'El problema principal es organizar proyectos complejos',
+  call_to_action_answer: 'Crear nuevo proyecto'
 };
 
 describe('updatePrototype', () => {
   beforeEach(createDB);
   afterEach(resetDB);
 
-  it('should update all fields of a prototype', async () => {
-    const existingPrototype = await createTestPrototype();
+  it('should update prototype fields', async () => {
+    // Create initial prototype
+    const [created] = await db.insert(prototypesTable)
+      .values({
+        ...createTestInput,
+        generated_ui_config: {
+          layout: 'single-column',
+          theme: 'minimal',
+          primary_color: '#007bff',
+          components: []
+        }
+      })
+      .returning();
 
-    const updateInput: UpdatePrototypeInput = {
-      id: existingPrototype.id,
-      title: 'Updated Title',
-      description: 'Updated description',
-      target_audience: 'Updated audience',
-      primary_goal: 'Updated goal',
-      key_features: 'Updated features',
-      user_flow: 'Updated flow',
-      success_metrics: 'Updated metrics',
-      generated_ui_config: '{"layout":"two-column","theme":"modern"}'
-    };
+    // Update the prototype
+    const result = await updatePrototype({
+      id: created.id,
+      problem_or_goal_answer: 'Updated problem statement',
+      content_elements_answer: 'Updated content elements'
+    });
 
-    const result = await updatePrototype(updateInput);
-
-    expect(result.id).toEqual(existingPrototype.id);
-    expect(result.title).toEqual('Updated Title');
-    expect(result.description).toEqual('Updated description');
-    expect(result.target_audience).toEqual('Updated audience');
-    expect(result.primary_goal).toEqual('Updated goal');
-    expect(result.key_features).toEqual('Updated features');
-    expect(result.user_flow).toEqual('Updated flow');
-    expect(result.success_metrics).toEqual('Updated metrics');
-    expect(result.generated_ui_config).toEqual('{"layout":"two-column","theme":"modern"}');
-    expect(result.created_at).toEqual(existingPrototype.created_at);
-    expect(result.updated_at).toBeInstanceOf(Date);
-    expect(result.updated_at.getTime()).toBeGreaterThan(existingPrototype.updated_at.getTime());
+    expect(result).not.toBeNull();
+    expect(result!.problem_or_goal_answer).toEqual('Updated problem statement');
+    expect(result!.content_elements_answer).toEqual('Updated content elements');
+    expect(result!.call_to_action_answer).toEqual(createTestInput.call_to_action_answer); // unchanged
+    expect(result!.updated_at).toBeInstanceOf(Date);
   });
 
-  it('should update only specified fields', async () => {
-    const existingPrototype = await createTestPrototype();
+  it('should regenerate UI config when answers are updated', async () => {
+    // Create initial prototype
+    const [created] = await db.insert(prototypesTable)
+      .values({
+        ...createTestInput,
+        generated_ui_config: {
+          layout: 'single-column',
+          theme: 'minimal',
+          primary_color: '#007bff',
+          components: [
+            {
+              id: 'old-heading',
+              type: 'heading',
+              content: 'Old Title'
+            }
+          ]
+        }
+      })
+      .returning();
 
-    const updateInput: UpdatePrototypeInput = {
-      id: existingPrototype.id,
-      title: 'Partially Updated Title',
-      target_audience: 'Partially Updated Audience'
-    };
+    // Update with new problem answer
+    const result = await updatePrototype({
+      id: created.id,
+      problem_or_goal_answer: 'Crear una plataforma de gestión de proyectos'
+    });
 
-    const result = await updatePrototype(updateInput);
-
-    expect(result.id).toEqual(existingPrototype.id);
-    expect(result.title).toEqual('Partially Updated Title');
-    expect(result.target_audience).toEqual('Partially Updated Audience');
-    // Other fields should remain unchanged
-    expect(result.description).toEqual(existingPrototype.description);
-    expect(result.primary_goal).toEqual(existingPrototype.primary_goal);
-    expect(result.key_features).toEqual(existingPrototype.key_features);
-    expect(result.user_flow).toEqual(existingPrototype.user_flow);
-    expect(result.success_metrics).toEqual(existingPrototype.success_metrics);
-    expect(result.generated_ui_config).toEqual(existingPrototype.generated_ui_config);
-    expect(result.created_at).toEqual(existingPrototype.created_at);
-    expect(result.updated_at).toBeInstanceOf(Date);
-    expect(result.updated_at.getTime()).toBeGreaterThan(existingPrototype.updated_at.getTime());
+    expect(result).not.toBeNull();
+    expect(result!.generated_ui_config).toBeDefined();
+    expect(result!.generated_ui_config.components).toBeDefined();
+    
+    // Should have regenerated UI with new heading
+    const headingComponent = result!.generated_ui_config.components.find(c => c.type === 'heading');
+    expect(headingComponent).toBeDefined();
+    expect(headingComponent!.content).not.toEqual('Old Title');
   });
 
-  it('should handle nullable description field', async () => {
-    const existingPrototype = await createTestPrototype();
-
-    const updateInput: UpdatePrototypeInput = {
-      id: existingPrototype.id,
-      description: null
+  it('should not regenerate UI config when no answers are updated', async () => {
+    // Create initial prototype with specific UI config
+    const originalUIConfig = {
+      layout: 'single-column' as const,
+      theme: 'minimal' as const,
+      primary_color: '#007bff',
+      components: [
+        {
+          id: 'original-heading',
+          type: 'heading' as const,
+          content: 'Original Title'
+        }
+      ]
     };
 
-    const result = await updatePrototype(updateInput);
+    const [created] = await db.insert(prototypesTable)
+      .values({
+        ...createTestInput,
+        generated_ui_config: originalUIConfig
+      })
+      .returning();
 
-    expect(result.description).toBeNull();
-    expect(result.title).toEqual(existingPrototype.title); // Other fields unchanged
+    // Update without changing any answers (only updating timestamps internally)
+    const result = await updatePrototype({
+      id: created.id
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.generated_ui_config.components[0].content).toEqual('Original Title');
+  });
+
+  it('should return null for non-existent prototype', async () => {
+    const result = await updatePrototype({
+      id: 99999,
+      problem_or_goal_answer: 'Updated answer'
+    });
+
+    expect(result).toBeNull();
   });
 
   it('should save updated prototype to database', async () => {
-    const existingPrototype = await createTestPrototype();
+    // Create initial prototype
+    const [created] = await db.insert(prototypesTable)
+      .values({
+        ...createTestInput,
+        generated_ui_config: {
+          layout: 'single-column',
+          theme: 'minimal',
+          primary_color: '#007bff',
+          components: []
+        }
+      })
+      .returning();
 
-    const updateInput: UpdatePrototypeInput = {
-      id: existingPrototype.id,
-      title: 'Database Updated Title',
-      primary_goal: 'Database Updated Goal'
-    };
+    // Update the prototype
+    await updatePrototype({
+      id: created.id,
+      visual_elements_answer: 'Nuevos elementos visuales con gráficos'
+    });
 
-    await updatePrototype(updateInput);
-
-    const prototypes = await db.select()
+    // Verify changes in database
+    const [updated] = await db.select()
       .from(prototypesTable)
-      .where(eq(prototypesTable.id, existingPrototype.id))
+      .where(eq(prototypesTable.id, created.id))
       .execute();
 
-    expect(prototypes).toHaveLength(1);
-    expect(prototypes[0].title).toEqual('Database Updated Title');
-    expect(prototypes[0].primary_goal).toEqual('Database Updated Goal');
-    expect(prototypes[0].updated_at).toBeInstanceOf(Date);
-    expect(prototypes[0].updated_at.getTime()).toBeGreaterThan(existingPrototype.updated_at.getTime());
+    expect(updated.visual_elements_answer).toEqual('Nuevos elementos visuales con gráficos');
+    expect(updated.problem_or_goal_answer).toEqual(createTestInput.problem_or_goal_answer); // unchanged
+    expect(updated.updated_at.getTime()).toBeGreaterThan(created.updated_at.getTime());
   });
 
-  it('should throw error for non-existent prototype', async () => {
-    const updateInput: UpdatePrototypeInput = {
-      id: 999,
-      title: 'Non-existent Update'
-    };
+  it('should handle partial updates correctly', async () => {
+    // Create initial prototype
+    const [created] = await db.insert(prototypesTable)
+      .values({
+        ...createTestInput,
+        generated_ui_config: {
+          layout: 'single-column',
+          theme: 'minimal',
+          primary_color: '#007bff',
+          components: []
+        }
+      })
+      .returning();
 
-    await expect(updatePrototype(updateInput)).rejects.toThrow(/not found/i);
+    // Update only one field
+    const result = await updatePrototype({
+      id: created.id,
+      atmosphere_answer: 'Diseño moderno con colores verdes y elementos naturales'
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.atmosphere_answer).toEqual('Diseño moderno con colores verdes y elementos naturales');
+    expect(result!.problem_or_goal_answer).toEqual(createTestInput.problem_or_goal_answer);
+    expect(result!.content_elements_answer).toEqual(createTestInput.content_elements_answer);
+    expect(result!.call_to_action_answer).toEqual(createTestInput.call_to_action_answer);
+    expect(result!.visual_elements_answer).toEqual(createTestInput.visual_elements_answer);
+    
+    // Should regenerate UI config with new primary color
+    expect(result!.generated_ui_config.primary_color).toEqual('#28a745'); // green color
   });
 
-  it('should always update the updated_at timestamp', async () => {
-    const existingPrototype = await createTestPrototype();
+  it('should generate appropriate UI components based on updated answers', async () => {
+    // Create initial prototype
+    const [created] = await db.insert(prototypesTable)
+      .values({
+        ...createTestInput,
+        generated_ui_config: {
+          layout: 'single-column',
+          theme: 'minimal',
+          primary_color: '#007bff',
+          components: []
+        }
+      })
+      .returning();
 
-    // Update with minimal change
-    const updateInput: UpdatePrototypeInput = {
-      id: existingPrototype.id
-    };
+    // Update with answers that should generate specific components
+    const result = await updatePrototype({
+      id: created.id,
+      content_elements_answer: 'Necesito un formulario para capturar datos del usuario y una lista de opciones',
+      visual_elements_answer: 'Una imagen destacada para mostrar el producto',
+      call_to_action_answer: 'Registrarse ahora'
+    });
 
-    const result = await updatePrototype(updateInput);
-
-    expect(result.updated_at).toBeInstanceOf(Date);
-    expect(result.updated_at.getTime()).toBeGreaterThan(existingPrototype.updated_at.getTime());
+    expect(result).not.toBeNull();
+    
+    const components = result!.generated_ui_config.components;
+    
+    // Should have heading
+    expect(components.some(c => c.type === 'heading')).toBe(true);
+    
+    // Should have input field (from formulario mention)
+    expect(components.some(c => c.type === 'input')).toBe(true);
+    
+    // Should have list (from lista mention)
+    expect(components.some(c => c.type === 'list')).toBe(true);
+    
+    // Should have image (from imagen mention)
+    expect(components.some(c => c.type === 'image')).toBe(true);
+    
+    // Should have button with correct label
+    const buttonComponent = components.find(c => c.type === 'button');
+    expect(buttonComponent).toBeDefined();
+    expect(buttonComponent!.label).toEqual('Registrarse ahora');
   });
 });

@@ -1,24 +1,22 @@
 
 import { db } from '../db';
 import { prototypesTable } from '../db/schema';
-import { type DeletePrototypeInput } from '../schema';
 import { eq } from 'drizzle-orm';
 
 /**
- * Deletes a prototype from the database.
- * Removes the prototype and all its associated configuration data.
+ * Deletes a prototype by ID and returns success status
  */
-export async function deletePrototype(input: DeletePrototypeInput): Promise<{ success: boolean }> {
+export const deletePrototype = async (id: number): Promise<{ success: boolean }> => {
   try {
-    // Delete the prototype record from the database
-    const result = await db.delete(prototypesTable)
-      .where(eq(prototypesTable.id, input.id))
+    const result = await db
+      .delete(prototypesTable)
+      .where(eq(prototypesTable.id, id))
+      .returning({ id: prototypesTable.id })
       .execute();
 
-    // Return success status - even if no rows were affected (prototype doesn't exist)
-    return { success: true };
+    return { success: result.length > 0 };
   } catch (error) {
     console.error('Prototype deletion failed:', error);
     throw error;
   }
-}
+};

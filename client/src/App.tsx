@@ -1,17 +1,19 @@
 
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { trpc } from '@/utils/trpc';
 import { useState, useEffect, useCallback } from 'react';
-import type { Prototype, CreatePrototypeInput } from '../../server/src/schema';
+import type { Prototype, CreatePrototypeInput, UIConfig } from '../../server/src/schema';
 import { PrototypeForm } from '@/components/PrototypeForm';
 import { PrototypeList } from '@/components/PrototypeList';
-import { PrototypePreview } from '@/components/PrototypePreview';
+import { UIPreview } from '@/components/UIPreview';
 
 function App() {
   const [prototypes, setPrototypes] = useState<Prototype[]>([]);
   const [selectedPrototype, setSelectedPrototype] = useState<Prototype | null>(null);
-  const [activeTab, setActiveTab] = useState('create');
+  const [previewConfig, setPreviewConfig] = useState<UIConfig | null>(null);
+  const [activeView, setActiveView] = useState<'create' | 'list' | 'preview'>('create');
   const [isLoading, setIsLoading] = useState(false);
 
   const loadPrototypes = useCallback(async () => {
@@ -24,20 +26,38 @@ function App() {
   }, []);
 
   useEffect(() => {
-    loadPrototypes();
-  }, [loadPrototypes]);
+    if (activeView === 'list') {
+      loadPrototypes();
+    }
+  }, [activeView, loadPrototypes]);
 
   const handleCreatePrototype = async (formData: CreatePrototypeInput) => {
     setIsLoading(true);
     try {
       const newPrototype = await trpc.createPrototype.mutate(formData);
-      setPrototypes((prev: Prototype[]) => [...prev, newPrototype]);
+      setPrototypes((prev: Prototype[]) => [newPrototype, ...prev]);
       setSelectedPrototype(newPrototype);
-      setActiveTab('preview');
+      setActiveView('preview');
+      
+      // Load the UI preview
+      const preview = await trpc.generateUIPreview.query({ prototype_id: newPrototype.id });
+      setPreviewConfig(preview);
     } catch (error) {
       console.error('Failed to create prototype:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handlePreviewPrototype = async (prototype: Prototype) => {
+    setSelectedPrototype(prototype);
+    setActiveView('preview');
+    
+    try {
+      const preview = await trpc.generateUIPreview.query({ prototype_id: prototype.id });
+      setPreviewConfig(preview);
+    } catch (error) {
+      console.error('Failed to load preview:', error);
     }
   };
 
@@ -47,135 +67,147 @@ function App() {
       setPrototypes((prev: Prototype[]) => prev.filter(p => p.id !== id));
       if (selectedPrototype?.id === id) {
         setSelectedPrototype(null);
-        setActiveTab('create');
+        setPreviewConfig(null);
+        setActiveView('list');
       }
     } catch (error) {
       console.error('Failed to delete prototype:', error);
     }
   };
 
-  const handleSelectPrototype = (prototype: Prototype) => {
-    setSelectedPrototype(prototype);
-    setActiveTab('preview');
-  };
-
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="container mx-auto px-4 py-6">
-          <h1 className="text-3xl font-bold text-gray-900">🎯 Prototype Generator</h1>
-          <p className="text-gray-600 mt-2">
-            Create simple, interactive UI prototypes for user testing
-          </p>
-        </div>
-      </header>
-
-      <div className="container mx-auto px-4 py-8">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="create">✨ Create Prototype</TabsTrigger>
-            <TabsTrigger value="manage">📋 My Prototypes</TabsTrigger>
-            <TabsTrigger value="preview" disabled={!selectedPrototype}>
-              👁️ Preview
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="create" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Answer Five Key Questions</CardTitle>
-                <p className="text-sm text-gray-600">
-                  Help us understand your prototype needs to generate a simple, 
-                  effective user interface for testing.
-                </p>
-              </CardHeader>
-              <CardContent>
-                <PrototypeForm 
-                  onSubmit={handleCreatePrototype}
-                  isLoading={isLoading}
-                />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="manage" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Your Prototypes</CardTitle>
-                <p className="text-sm text-gray-600">
-                  Manage and preview your created prototypes
-                </p>
-              </CardHeader>
-              <CardContent>
-                <PrototypeList
-                  prototypes={prototypes}
-                  onSelect={handleSelectPrototype}
-                  onDelete={handleDeletePrototype}
-                />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="preview" className="mt-6">
-            {selectedPrototype ? (
-              <div className="grid lg:grid-cols-2 gap-6">
-                {/* Prototype Details */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>{selectedPrototype.title}</CardTitle>
-                    {selectedPrototype.description && (
-                      <p className="text-sm text-gray-600">
-                        {selectedPrototype.description}
-                      </p>
-                    )}
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <h4 className="font-semibold text-sm text-gray-700">Target Audience</h4>
-                      <p className="text-sm text-gray-600 mt-1">{selectedPrototype.target_audience}</p>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-sm text-gray-700">Primary Goal</h4>
-                      <p className="text-sm text-gray-600 mt-1">{selectedPrototype.primary_goal}</p>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-sm text-gray-700">Key Features</h4>
-                      <p className="text-sm text-gray-600 mt-1">{selectedPrototype.key_features}</p>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-sm text-gray-700">User Flow</h4>
-                      <p className="text-sm text-gray-600 mt-1">{selectedPrototype.user_flow}</p>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-sm text-gray-700">Success Metrics</h4>
-                      <p className="text-sm text-gray-600 mt-1">{selectedPrototype.success_metrics}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Live Preview */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Live Preview</CardTitle>
-                    <p className="text-sm text-gray-600">
-                      Interactive preview of your prototype
-                    </p>
-                  </CardHeader>
-                  <CardContent>
-                    <PrototypePreview prototypeId={selectedPrototype.id} />
-                  </CardContent>
-                </Card>
+      <div className="bg-white border-b border-slate-200 shadow-sm">
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-sm">✨</span>
               </div>
-            ) : (
-              <Card>
-                <CardContent className="text-center py-8">
-                  <p className="text-gray-500">Select a prototype to preview</p>
+              <h1 className="text-2xl font-bold text-slate-900">Simple Prototype</h1>
+              <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                37 Signals Inspired
+              </Badge>
+            </div>
+            
+            <div className="flex space-x-2">
+              <Button
+                variant={activeView === 'create' ? 'default' : 'outline'}
+                onClick={() => setActiveView('create')}
+                className="text-sm"
+              >
+                🚀 Crear Nuevo
+              </Button>
+              <Button
+                variant={activeView === 'list' ? 'default' : 'outline'}
+                onClick={() => setActiveView('list')}
+                className="text-sm"
+              >
+                📋 Mis Prototipos
+              </Button>
+              {selectedPrototype && (
+                <Button
+                  variant={activeView === 'preview' ? 'default' : 'outline'}
+                  onClick={() => setActiveView('preview')}
+                  className="text-sm"
+                >
+                  👁️ Vista Previa
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="container mx-auto px-6 py-8">
+        {activeView === 'create' && (
+          <div className="max-w-4xl mx-auto">
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold text-slate-900 mb-4">
+                5 Preguntas Simples = 1 Prototipo Perfecto ✨
+              </h2>
+              <p className="text-lg text-slate-600 max-w-2xl mx-auto">
+                Inspirado en la filosofía de 37 Signals: claridad, simplicidad y enfoque. 
+                Responde estas cinco preguntas para generar automáticamente tu prototipo.
+              </p>
+            </div>
+            
+            <PrototypeForm onSubmit={handleCreatePrototype} isLoading={isLoading} />
+          </div>
+        )}
+
+        {activeView === 'list' && (
+          <div className="max-w-6xl mx-auto">
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold text-slate-900 mb-4">
+                Tus Prototipos 📋
+              </h2>
+              <p className="text-slate-600">
+                Gestiona y visualiza todos tus prototipos generados
+              </p>
+            </div>
+            
+            <PrototypeList 
+              prototypes={prototypes} 
+              onPreview={handlePreviewPrototype}
+              onDelete={handleDeletePrototype}
+            />
+          </div>
+        )}
+
+        {activeView === 'preview' && selectedPrototype && (
+          <div className="max-w-7xl mx-auto">
+            <div className="mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-3xl font-bold text-slate-900">
+                    Vista Previa del Prototipo 👁️
+                  </h2>
+                  <p className="text-slate-600 mt-2">
+                    Generado automáticamente basado en tus respuestas
+                  </p>
+                </div>
+                <Badge className="bg-green-100 text-green-700 px-3 py-1">
+                  ID: {selectedPrototype.id}
+                </Badge>
+              </div>
+              
+              <Card className="mb-6">
+                <CardHeader>
+                  <CardTitle className="text-xl">Resumen de Respuestas</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <h4 className="font-semibold text-slate-700 mb-1">🎯 Problema/Objetivo:</h4>
+                    <p className="text-slate-600 text-sm">{selectedPrototype.problem_or_goal_answer}</p>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-slate-700 mb-1">📝 Contenido Esencial:</h4>
+                    <p className="text-slate-600 text-sm">{selectedPrototype.content_elements_answer}</p>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-slate-700 mb-1">⚡ Acción Principal:</h4>
+                    <p className="text-slate-600 text-sm">{selectedPrototype.call_to_action_answer}</p>
+                  </div>
                 </CardContent>
               </Card>
-            )}
-          </TabsContent>
-        </Tabs>
+            </div>
+            
+            <UIPreview config={previewConfig} />
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="bg-white border-t border-slate-200 mt-16">
+        <div className="container mx-auto px-6 py-8 text-center">
+          <p className="text-slate-500 text-sm">
+            Inspirado en la simplicidad y claridad de 37 Signals • 
+            Enfoque en lo esencial, elimina lo superfluo
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -1,33 +1,36 @@
 
+import { type Prototype, uiConfigSchema } from '../schema';
 import { db } from '../db';
 import { prototypesTable } from '../db/schema';
-import { type GetPrototypeInput, type Prototype } from '../schema';
 import { eq } from 'drizzle-orm';
 
 /**
- * Retrieves a specific prototype by ID.
- * Returns the prototype with its generated UI configuration for viewing or editing.
+ * Retrieves a single prototype by ID and ensures proper parsing of the UI config
  */
-export async function getPrototype(input: GetPrototypeInput): Promise<Prototype | null> {
+export const getPrototype = async (id: number): Promise<Prototype | null> => {
   try {
-    const result = await db.select()
+    const [prototype] = await db
+      .select()
       .from(prototypesTable)
-      .where(eq(prototypesTable.id, input.id))
+      .where(eq(prototypesTable.id, id))
+      .limit(1)
       .execute();
 
-    if (result.length === 0) {
+    if (!prototype) {
       return null;
     }
 
-    const prototype = result[0];
+    // Parse and validate the UI config from JSONB
+    const parsedUIConfig = uiConfigSchema.parse(prototype.generated_ui_config);
+
     return {
       ...prototype,
-      // Ensure dates are properly converted
-      created_at: new Date(prototype.created_at),
-      updated_at: new Date(prototype.updated_at)
+      generated_ui_config: parsedUIConfig,
+      created_at: prototype.created_at,
+      updated_at: prototype.updated_at
     };
   } catch (error) {
     console.error('Failed to retrieve prototype:', error);
     throw error;
   }
-}
+};

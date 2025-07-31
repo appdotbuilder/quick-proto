@@ -3,7 +3,49 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { resetDB, createDB } from '../helpers';
 import { db } from '../db';
 import { prototypesTable } from '../db/schema';
+import { type CreatePrototypeInput, type UIConfig } from '../schema';
 import { getPrototypes } from '../handlers/get_prototypes';
+
+// Test data
+const testUIConfig: UIConfig = {
+  layout: 'single-column',
+  theme: 'minimal',
+  primary_color: '#007bff',
+  components: [
+    {
+      id: 'header',
+      type: 'heading',
+      content: 'Test Landing Page'
+    },
+    {
+      id: 'description',
+      type: 'text',
+      content: 'This is a test description'
+    },
+    {
+      id: 'cta',
+      type: 'button',
+      label: 'Get Started',
+      action: 'submit'
+    }
+  ]
+};
+
+const testPrototype1: CreatePrototypeInput = {
+  problem_or_goal_answer: 'Need a simple landing page for product launch',
+  content_elements_answer: 'Product description, key features, and pricing',
+  call_to_action_answer: 'Sign up for early access',
+  visual_elements_answer: 'Clean hero image and feature icons',
+  atmosphere_answer: 'Professional yet approachable, similar to Basecamp'
+};
+
+const testPrototype2: CreatePrototypeInput = {
+  problem_or_goal_answer: 'Create a contact form for customer inquiries',
+  content_elements_answer: 'Contact information and inquiry form',
+  call_to_action_answer: 'Send message',
+  visual_elements_answer: 'Simple form layout with minimal graphics',
+  atmosphere_answer: 'Clean and trustworthy design'
+};
 
 describe('getPrototypes', () => {
   beforeEach(createDB);
@@ -11,97 +53,134 @@ describe('getPrototypes', () => {
 
   it('should return empty array when no prototypes exist', async () => {
     const result = await getPrototypes();
-    
     expect(result).toEqual([]);
   });
 
-  it('should return all prototypes from database', async () => {
-    // Create test prototypes
-    await db.insert(prototypesTable).values([
-      {
-        title: 'E-commerce App',
-        description: 'Online shopping platform',
-        target_audience: 'Young adults',
-        primary_goal: 'Increase sales',
-        key_features: 'Product catalog, cart, checkout',
-        user_flow: 'Browse -> Add to cart -> Checkout',
-        success_metrics: 'Conversion rate > 3%',
-        generated_ui_config: '{"layout":"grid","theme":"modern","components":[]}'
-      },
-      {
-        title: 'Task Manager',
-        description: null, // Test nullable field
-        target_audience: 'Remote workers',
-        primary_goal: 'Improve productivity',
-        key_features: 'Task lists, reminders, collaboration',
-        user_flow: 'Create task -> Assign -> Complete',
-        success_metrics: 'Task completion rate > 80%',
-        generated_ui_config: '{"layout":"single-column","theme":"minimal","components":[]}'
-      }
-    ]).execute();
+  it('should return all prototypes ordered by creation date (newest first)', async () => {
+    // Create first prototype
+    const firstPrototype = await db.insert(prototypesTable)
+      .values({
+        ...testPrototype1,
+        generated_ui_config: testUIConfig
+      })
+      .returning()
+      .execute();
+
+    // Wait a bit to ensure different timestamps
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    // Create second prototype
+    const secondPrototype = await db.insert(prototypesTable)
+      .values({
+        ...testPrototype2,
+        generated_ui_config: testUIConfig
+      })
+      .returning()
+      .execute();
 
     const result = await getPrototypes();
 
     expect(result).toHaveLength(2);
     
-    // Check first prototype
-    expect(result[0].title).toEqual('E-commerce App');
-    expect(result[0].description).toEqual('Online shopping platform');
-    expect(result[0].target_audience).toEqual('Young adults');
-    expect(result[0].primary_goal).toEqual('Increase sales');
-    expect(result[0].key_features).toEqual('Product catalog, cart, checkout');
-    expect(result[0].user_flow).toEqual('Browse -> Add to cart -> Checkout');
-    expect(result[0].success_metrics).toEqual('Conversion rate > 3%');
-    expect(result[0].generated_ui_config).toEqual('{"layout":"grid","theme":"modern","components":[]}');
-    expect(result[0].id).toBeDefined();
-    expect(result[0].created_at).toBeInstanceOf(Date);
-    expect(result[0].updated_at).toBeInstanceOf(Date);
-
-    // Check second prototype
-    expect(result[1].title).toEqual('Task Manager');
-    expect(result[1].description).toBeNull();
-    expect(result[1].target_audience).toEqual('Remote workers');
-    expect(result[1].primary_goal).toEqual('Improve productivity');
-    expect(result[1].key_features).toEqual('Task lists, reminders, collaboration');
-    expect(result[1].user_flow).toEqual('Create task -> Assign -> Complete');
-    expect(result[1].success_metrics).toEqual('Task completion rate > 80%');
-    expect(result[1].generated_ui_config).toEqual('{"layout":"single-column","theme":"minimal","components":[]}');
-    expect(result[1].id).toBeDefined();
-    expect(result[1].created_at).toBeInstanceOf(Date);
-    expect(result[1].updated_at).toBeInstanceOf(Date);
+    // Verify ordering (newest first)
+    expect(result[0].id).toEqual(secondPrototype[0].id);
+    expect(result[1].id).toEqual(firstPrototype[0].id);
+    expect(result[0].created_at.getTime()).toBeGreaterThan(result[1].created_at.getTime());
   });
 
-  it('should return prototypes in database insertion order', async () => {
-    // Create prototypes in specific order
-    await db.insert(prototypesTable).values({
-      title: 'First Prototype',
-      description: 'Created first',
-      target_audience: 'Developers',
-      primary_goal: 'Test ordering',
-      key_features: 'Basic features',
-      user_flow: 'Simple flow',
-      success_metrics: 'Basic metrics',
-      generated_ui_config: '{"layout":"single-column","theme":"minimal","components":[]}'
-    }).execute();
+  it('should parse and validate UI configs correctly', async () => {
+    await db.insert(prototypesTable)
+      .values({
+        ...testPrototype1,
+        generated_ui_config: testUIConfig
+      })
+      .execute();
 
-    await db.insert(prototypesTable).values({
-      title: 'Second Prototype',
-      description: 'Created second',
-      target_audience: 'Users',
-      primary_goal: 'Test ordering',
-      key_features: 'Advanced features',
-      user_flow: 'Complex flow',
-      success_metrics: 'Advanced metrics',
-      generated_ui_config: '{"layout":"grid","theme":"modern","components":[]}'
-    }).execute();
+    const result = await getPrototypes();
+
+    expect(result).toHaveLength(1);
+    expect(result[0].generated_ui_config).toBeDefined();
+    expect(result[0].generated_ui_config.layout).toEqual('single-column');
+    expect(result[0].generated_ui_config.theme).toEqual('minimal');
+    expect(result[0].generated_ui_config.primary_color).toEqual('#007bff');
+    expect(result[0].generated_ui_config.components).toHaveLength(3);
+  });
+
+  it('should include all prototype fields', async () => {
+    await db.insert(prototypesTable)
+      .values({
+        ...testPrototype1,
+        generated_ui_config: testUIConfig
+      })
+      .execute();
+
+    const result = await getPrototypes();
+
+    expect(result).toHaveLength(1);
+    const prototype = result[0];
+
+    expect(prototype.id).toBeDefined();
+    expect(prototype.problem_or_goal_answer).toEqual(testPrototype1.problem_or_goal_answer);
+    expect(prototype.content_elements_answer).toEqual(testPrototype1.content_elements_answer);
+    expect(prototype.call_to_action_answer).toEqual(testPrototype1.call_to_action_answer);
+    expect(prototype.visual_elements_answer).toEqual(testPrototype1.visual_elements_answer);
+    expect(prototype.atmosphere_answer).toEqual(testPrototype1.atmosphere_answer);
+    expect(prototype.created_at).toBeInstanceOf(Date);
+    expect(prototype.updated_at).toBeInstanceOf(Date);
+  });
+
+  it('should handle multiple prototypes with different UI configs', async () => {
+    const customUIConfig: UIConfig = {
+      layout: 'two-column',
+      theme: 'modern',
+      primary_color: '#28a745',
+      components: [
+        {
+          id: 'title',
+          type: 'heading',
+          content: 'Contact Us'
+        },
+        {
+          id: 'form',
+          type: 'input',
+          placeholder: 'Enter your message'
+        }
+      ]
+    };
+
+    // Insert prototypes with different UI configs
+    await db.insert(prototypesTable)
+      .values({
+        ...testPrototype1,
+        generated_ui_config: testUIConfig
+      })
+      .execute();
+
+    await db.insert(prototypesTable)
+      .values({
+        ...testPrototype2,
+        generated_ui_config: customUIConfig
+      })
+      .execute();
 
     const result = await getPrototypes();
 
     expect(result).toHaveLength(2);
-    expect(result[0].title).toEqual('First Prototype');
-    expect(result[1].title).toEqual('Second Prototype');
     
-    // Verify timestamps reflect insertion order
-    expect(result[0].created_at <= result[1].created_at).toBe(true);
+    // Find prototypes by their problem answers
+    const landingPagePrototype = result.find(p => 
+      p.problem_or_goal_answer === testPrototype1.problem_or_goal_answer
+    );
+    const contactFormPrototype = result.find(p => 
+      p.problem_or_goal_answer === testPrototype2.problem_or_goal_answer
+    );
+
+    expect(landingPagePrototype).toBeDefined();
+    expect(contactFormPrototype).toBeDefined();
+
+    expect(landingPagePrototype!.generated_ui_config.theme).toEqual('minimal');
+    expect(contactFormPrototype!.generated_ui_config.theme).toEqual('modern');
+    expect(landingPagePrototype!.generated_ui_config.layout).toEqual('single-column');
+    expect(contactFormPrototype!.generated_ui_config.layout).toEqual('two-column');
   });
 });

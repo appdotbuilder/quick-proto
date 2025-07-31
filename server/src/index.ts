@@ -4,19 +4,19 @@ import { createHTTPServer } from '@trpc/server/adapters/standalone';
 import 'dotenv/config';
 import cors from 'cors';
 import superjson from 'superjson';
+import { z } from 'zod';
 
 // Import schemas
 import { 
   createPrototypeInputSchema, 
-  updatePrototypeInputSchema,
-  getPrototypeInputSchema,
-  deletePrototypeInputSchema
+  updatePrototypeInputSchema, 
+  uiPreviewRequestSchema 
 } from './schema';
 
 // Import handlers
 import { createPrototype } from './handlers/create_prototype';
-import { getPrototypes } from './handlers/get_prototypes';
 import { getPrototype } from './handlers/get_prototype';
+import { getPrototypes } from './handlers/get_prototypes';
 import { updatePrototype } from './handlers/update_prototype';
 import { deletePrototype } from './handlers/delete_prototype';
 import { generateUIPreview } from './handlers/generate_ui_preview';
@@ -32,34 +32,30 @@ const appRouter = router({
   healthcheck: publicProcedure.query(() => {
     return { status: 'ok', timestamp: new Date().toISOString() };
   }),
-  
-  // Create a new prototype based on five key questions
+
+  // Prototype CRUD operations
   createPrototype: publicProcedure
     .input(createPrototypeInputSchema)
     .mutation(({ input }) => createPrototype(input)),
-    
-  // Get all prototypes
+
+  getPrototype: publicProcedure
+    .input(z.object({ id: z.number() }))
+    .query(({ input }) => getPrototype(input.id)),
+
   getPrototypes: publicProcedure
     .query(() => getPrototypes()),
-    
-  // Get a specific prototype by ID
-  getPrototype: publicProcedure
-    .input(getPrototypeInputSchema)
-    .query(({ input }) => getPrototype(input)),
-    
-  // Update an existing prototype
+
   updatePrototype: publicProcedure
     .input(updatePrototypeInputSchema)
     .mutation(({ input }) => updatePrototype(input)),
-    
-  // Delete a prototype
+
   deletePrototype: publicProcedure
-    .input(deletePrototypeInputSchema)
-    .mutation(({ input }) => deletePrototype(input)),
-    
-  // Generate UI preview for testing
+    .input(z.object({ id: z.number() }))
+    .mutation(({ input }) => deletePrototype(input.id)),
+
+  // UI generation
   generateUIPreview: publicProcedure
-    .input(getPrototypeInputSchema)
+    .input(uiPreviewRequestSchema)
     .query(({ input }) => generateUIPreview(input)),
 });
 

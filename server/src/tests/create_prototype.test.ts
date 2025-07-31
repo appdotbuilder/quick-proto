@@ -3,122 +3,138 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { resetDB, createDB } from '../helpers';
 import { db } from '../db';
 import { prototypesTable } from '../db/schema';
-import { type CreatePrototypeInput, type UIConfig } from '../schema';
+import { type CreatePrototypeInput } from '../schema';
 import { createPrototype } from '../handlers/create_prototype';
 import { eq } from 'drizzle-orm';
 
-// Simple test input
+// Test input with all required fields
 const testInput: CreatePrototypeInput = {
-  title: 'E-commerce Mobile App',
-  description: 'A streamlined shopping experience for mobile users',
-  target_audience: 'Busy professionals aged 25-45 who value convenience',
-  primary_goal: 'Enable quick product discovery and checkout in under 3 minutes',
-  key_features: 'One-tap purchasing, personalized recommendations, saved payment methods',
-  user_flow: 'Browse → Select → Quick checkout → Confirmation',
-  success_metrics: 'Conversion rate >15%, average checkout time <3 minutes'
+  problem_or_goal_answer: 'Necesitamos una aplicación simple para gestionar tareas diarias y aumentar la productividad.',
+  content_elements_answer: 'Lista de tareas, descripción del proyecto y formulario para agregar nuevas tareas.',
+  call_to_action_answer: 'Comenzar ahora',
+  visual_elements_answer: 'Imagen del dashboard principal y iconos para cada categoría de tarea.',
+  atmosphere_answer: 'Un ambiente profesional y confiable con colores azules que inspiren tranquilidad.'
 };
 
 describe('createPrototype', () => {
   beforeEach(createDB);
   afterEach(resetDB);
 
-  it('should create a prototype with all fields', async () => {
+  it('should create a prototype with all required fields', async () => {
     const result = await createPrototype(testInput);
 
-    // Basic field validation
-    expect(result.title).toEqual('E-commerce Mobile App');
-    expect(result.description).toEqual('A streamlined shopping experience for mobile users');
-    expect(result.target_audience).toEqual(testInput.target_audience);
-    expect(result.primary_goal).toEqual(testInput.primary_goal);
-    expect(result.key_features).toEqual(testInput.key_features);
-    expect(result.user_flow).toEqual(testInput.user_flow);
-    expect(result.success_metrics).toEqual(testInput.success_metrics);
+    // Validate basic fields
+    expect(result.problem_or_goal_answer).toEqual(testInput.problem_or_goal_answer);
+    expect(result.content_elements_answer).toEqual(testInput.content_elements_answer);
+    expect(result.call_to_action_answer).toEqual(testInput.call_to_action_answer);
+    expect(result.visual_elements_answer).toEqual(testInput.visual_elements_answer);
+    expect(result.atmosphere_answer).toEqual(testInput.atmosphere_answer);
     expect(result.id).toBeDefined();
     expect(result.created_at).toBeInstanceOf(Date);
     expect(result.updated_at).toBeInstanceOf(Date);
   });
 
-  it('should generate valid UI configuration', async () => {
+  it('should generate UI config based on answers', async () => {
     const result = await createPrototype(testInput);
 
-    // Parse and validate generated UI config
-    const uiConfig: UIConfig = JSON.parse(result.generated_ui_config);
-    
-    expect(uiConfig.layout).toEqual('single-column');
-    expect(uiConfig.theme).toEqual('minimal');
-    expect(uiConfig.primary_color).toEqual('#2563eb');
-    expect(uiConfig.components).toHaveLength(3);
-    expect(uiConfig.interactions).toHaveLength(1);
+    // Validate generated UI config structure
+    expect(result.generated_ui_config).toBeDefined();
+    expect(result.generated_ui_config.layout).toEqual('single-column');
+    expect(result.generated_ui_config.theme).toEqual('minimal');
+    expect(result.generated_ui_config.primary_color).toBeDefined();
+    expect(result.generated_ui_config.components).toBeInstanceOf(Array);
+  });
 
-    // Validate header component
-    const headerComponent = uiConfig.components.find(c => c.id === 'header');
-    expect(headerComponent).toBeDefined();
-    expect(headerComponent?.type).toEqual('text');
-    expect(headerComponent?.label).toEqual('E-commerce Mobile App');
+  it('should generate appropriate UI components from content elements', async () => {
+    const result = await createPrototype(testInput);
+    const components = result.generated_ui_config.components;
 
-    // Validate button component
-    const buttonComponent = uiConfig.components.find(c => c.id === 'main-button');
-    expect(buttonComponent).toBeDefined();
-    expect(buttonComponent?.type).toEqual('button');
-    expect(buttonComponent?.label).toEqual('Get Started');
+    // Should always have a heading
+    const heading = components.find(c => c.type === 'heading');
+    expect(heading).toBeDefined();
+    expect(heading?.content).toBeDefined();
+
+    // Should have a list component because content mentions "lista de tareas"
+    const list = components.find(c => c.type === 'list');
+    expect(list).toBeDefined();
+    expect(list?.items).toBeInstanceOf(Array);
+
+    // Should have an input field because content mentions "formulario"
+    const input = components.find(c => c.type === 'input');
+    expect(input).toBeDefined();
+    expect(input?.placeholder).toBeDefined();
+
+    // Should have an image because visual elements mentions "imagen"
+    const image = components.find(c => c.type === 'image');
+    expect(image).toBeDefined();
+
+    // Should always have a CTA button
+    const button = components.find(c => c.type === 'button');
+    expect(button).toBeDefined();
+    expect(button?.label).toEqual('Comenzar ahora');
+    expect(button?.action).toEqual('primary-action');
+  });
+
+  it('should extract primary color from atmosphere answer', async () => {
+    const result = await createPrototype(testInput);
+
+    // Should detect blue color from "azules" in atmosphere answer
+    expect(result.generated_ui_config.primary_color).toEqual('#2563eb');
   });
 
   it('should save prototype to database', async () => {
     const result = await createPrototype(testInput);
 
-    // Query using proper drizzle syntax
+    // Query database to verify prototype was saved
     const prototypes = await db.select()
       .from(prototypesTable)
       .where(eq(prototypesTable.id, result.id))
       .execute();
 
     expect(prototypes).toHaveLength(1);
-    expect(prototypes[0].title).toEqual('E-commerce Mobile App');
-    expect(prototypes[0].target_audience).toEqual(testInput.target_audience);
-    expect(prototypes[0].created_at).toBeInstanceOf(Date);
-    expect(prototypes[0].updated_at).toBeInstanceOf(Date);
-  });
-
-  it('should handle null description', async () => {
-    const inputWithoutDescription: CreatePrototypeInput = {
-      ...testInput,
-      description: null
-    };
-
-    const result = await createPrototype(inputWithoutDescription);
-
-    expect(result.description).toBeNull();
+    const savedPrototype = prototypes[0];
     
-    // UI config should handle null description gracefully
-    const uiConfig: UIConfig = JSON.parse(result.generated_ui_config);
-    const descriptionComponent = uiConfig.components.find(c => c.id === 'description');
-    expect(descriptionComponent?.label).toEqual('Welcome to your prototype');
+    expect(savedPrototype.problem_or_goal_answer).toEqual(testInput.problem_or_goal_answer);
+    expect(savedPrototype.content_elements_answer).toEqual(testInput.content_elements_answer);
+    expect(savedPrototype.call_to_action_answer).toEqual(testInput.call_to_action_answer);
+    expect(savedPrototype.visual_elements_answer).toEqual(testInput.visual_elements_answer);
+    expect(savedPrototype.atmosphere_answer).toEqual(testInput.atmosphere_answer);
+    expect(savedPrototype.generated_ui_config).toBeDefined();
+    expect(savedPrototype.created_at).toBeInstanceOf(Date);
+    expect(savedPrototype.updated_at).toBeInstanceOf(Date);
   });
 
-  it('should create prototype with minimal required fields', async () => {
-    const minimalInput: CreatePrototypeInput = {
-      title: 'Minimal App',
-      target_audience: 'General users',
-      primary_goal: 'Test functionality',
-      key_features: 'Basic features',
-      user_flow: 'Simple flow',
-      success_metrics: 'User satisfaction'
+  it('should handle different atmosphere colors correctly', async () => {
+    const greenInput: CreatePrototypeInput = {
+      ...testInput,
+      atmosphere_answer: 'Un ambiente natural y de crecimiento con tonos verdes.'
     };
 
-    const result = await createPrototype(minimalInput);
+    const result = await createPrototype(greenInput);
+    expect(result.generated_ui_config.primary_color).toEqual('#059669');
+  });
 
-    expect(result.title).toEqual('Minimal App');
-    expect(result.description).toBeNull();
-    expect(result.target_audience).toEqual('General users');
-    expect(result.id).toBeDefined();
+  it('should generate meaningful title from problem answer', async () => {
+    const shortInput: CreatePrototypeInput = {
+      ...testInput,
+      problem_or_goal_answer: 'Crear una herramienta de gestión eficiente.'
+    };
 
-    // Verify it was saved to database
-    const savedPrototype = await db.select()
-      .from(prototypesTable)
-      .where(eq(prototypesTable.id, result.id))
-      .execute();
+    const result = await createPrototype(shortInput);
+    const headingComponent = result.generated_ui_config.components.find(c => c.type === 'heading');
+    
+    expect(headingComponent?.content).toEqual('Crear una herramienta de gestión eficiente');
+  });
 
-    expect(savedPrototype).toHaveLength(1);
-    expect(savedPrototype[0].title).toEqual('Minimal App');
+  it('should use default title for very short problem answers', async () => {
+    const veryShortInput: CreatePrototypeInput = {
+      ...testInput,
+      problem_or_goal_answer: 'App'
+    };
+
+    const result = await createPrototype(veryShortInput);
+    const headingComponent = result.generated_ui_config.components.find(c => c.type === 'heading');
+    
+    expect(headingComponent?.content).toEqual('Solución Simple y Efectiva');
   });
 });

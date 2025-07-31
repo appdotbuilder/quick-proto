@@ -1,40 +1,34 @@
 
+import { type UIPreviewRequest, type UIConfig, uiConfigSchema } from '../schema';
 import { db } from '../db';
 import { prototypesTable } from '../db/schema';
-import { type GetPrototypeInput, type UIConfig, uiConfigSchema } from '../schema';
 import { eq } from 'drizzle-orm';
 
 /**
- * Generates a live preview of the prototype UI based on the stored configuration.
- * Returns structured data that can be rendered on the frontend.
+ * Generates UI preview by fetching the prototype's generated UI config
+ * and returning it as a properly parsed UIConfig object for frontend consumption
  */
-export async function generateUIPreview(input: GetPrototypeInput): Promise<UIConfig> {
+export const generateUIPreview = async (input: UIPreviewRequest): Promise<UIConfig | null> => {
   try {
-    // Fetch the prototype by ID
-    const results = await db.select()
+    // Fetch the prototype from database
+    const results = await db
+      .select({ generated_ui_config: prototypesTable.generated_ui_config })
       .from(prototypesTable)
-      .where(eq(prototypesTable.id, input.id))
+      .where(eq(prototypesTable.id, input.prototype_id))
+      .limit(1)
       .execute();
 
     if (results.length === 0) {
-      throw new Error(`Prototype with ID ${input.id} not found`);
+      return null;
     }
 
     const prototype = results[0];
 
-    // Parse the generated_ui_config JSON
-    let uiConfig: UIConfig;
-    try {
-      const parsedConfig = JSON.parse(prototype.generated_ui_config);
-      uiConfig = uiConfigSchema.parse(parsedConfig);
-    } catch (parseError) {
-      console.error('Failed to parse UI config:', parseError);
-      throw new Error('Invalid UI configuration format');
-    }
-
-    return uiConfig;
+    // Parse and validate the stored UI config
+    const parsedConfig = uiConfigSchema.parse(prototype.generated_ui_config);
+    return parsedConfig;
   } catch (error) {
     console.error('UI preview generation failed:', error);
     throw error;
   }
-}
+};

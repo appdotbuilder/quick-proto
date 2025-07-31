@@ -1,23 +1,21 @@
 
-import { serial, text, pgTable, timestamp } from 'drizzle-orm/pg-core';
+import { serial, text, pgTable, timestamp, jsonb } from 'drizzle-orm/pg-core';
 
 export const prototypesTable = pgTable('prototypes', {
   id: serial('id').primaryKey(),
-  title: text('title').notNull(),
-  description: text('description'), // Nullable by default
-  target_audience: text('target_audience').notNull(),
-  primary_goal: text('primary_goal').notNull(),
-  key_features: text('key_features').notNull(),
-  user_flow: text('user_flow').notNull(),
-  success_metrics: text('success_metrics').notNull(),
-  generated_ui_config: text('generated_ui_config').notNull(), // JSON string containing UI configuration
+  problem_or_goal_answer: text('problem_or_goal_answer').notNull(),
+  content_elements_answer: text('content_elements_answer').notNull(),
+  call_to_action_answer: text('call_to_action_answer').notNull(),
+  visual_elements_answer: text('visual_elements_answer').notNull(),
+  atmosphere_answer: text('atmosphere_answer').notNull(),
+  generated_ui_config: jsonb('generated_ui_config').notNull(),
   created_at: timestamp('created_at').defaultNow().notNull(),
-  updated_at: timestamp('updated_at').defaultNow().notNull(),
+  updated_at: timestamp('updated_at').defaultNow().notNull()
 });
 
 // TypeScript types for the table schema
-export type Prototype = typeof prototypesTable.$inferSelect; // For SELECT operations
-export type NewPrototype = typeof prototypesTable.$inferInsert; // For INSERT operations
+export type Prototype = typeof prototypesTable.$inferSelect;
+export type NewPrototype = typeof prototypesTable.$inferInsert;
 
 // Export all tables for proper query building
 export const tables = { prototypes: prototypesTable };

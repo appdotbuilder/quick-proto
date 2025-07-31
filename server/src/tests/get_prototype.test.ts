@@ -3,107 +3,180 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { resetDB, createDB } from '../helpers';
 import { db } from '../db';
 import { prototypesTable } from '../db/schema';
-import { type GetPrototypeInput } from '../schema';
 import { getPrototype } from '../handlers/get_prototype';
+import { type UIConfig } from '../schema';
 
-// Test input
-const testInput: GetPrototypeInput = {
-  id: 1
+// Test data matching the five questions approach
+const testUIConfig: UIConfig = {
+  layout: 'single-column',
+  theme: 'minimal',
+  primary_color: '#2563eb',
+  components: [
+    {
+      id: 'heading-1',
+      type: 'heading',
+      content: 'Simple Task Manager'
+    },
+    {
+      id: 'text-1',
+      type: 'text',
+      content: 'Organize your daily tasks with clarity and focus.'
+    },
+    {
+      id: 'button-1',
+      type: 'button',
+      label: 'Start Managing Tasks',
+      action: 'navigate_to_dashboard'
+    }
+  ]
 };
 
-// Sample prototype data for testing
-const samplePrototype = {
-  title: 'Test Prototype',
-  description: 'A prototype for testing retrieval',
-  target_audience: 'Software developers',
-  primary_goal: 'Test database operations',
-  key_features: 'CRUD operations, validation',
-  user_flow: 'Create -> Read -> Update -> Delete',
-  success_metrics: 'All operations complete successfully',
-  generated_ui_config: JSON.stringify({
-    layout: 'single-column',
-    theme: 'minimal',
-    primary_color: '#007bff',
-    components: [],
-    interactions: []
-  })
+const testPrototypeData = {
+  problem_or_goal_answer: 'Need a simple way to track daily tasks without complexity',
+  content_elements_answer: 'Task names, due dates, and completion status',
+  call_to_action_answer: 'Start Managing Tasks',
+  visual_elements_answer: 'Clean checkboxes and simple progress indicators',
+  atmosphere_answer: 'Clean, focused, and distraction-free like 37signals products',
+  generated_ui_config: testUIConfig
 };
 
 describe('getPrototype', () => {
   beforeEach(createDB);
   afterEach(resetDB);
 
-  it('should retrieve an existing prototype', async () => {
-    // Create a prototype first
-    const insertResult = await db.insert(prototypesTable)
-      .values(samplePrototype)
+  it('should retrieve a prototype by id', async () => {
+    // Create test prototype
+    const [insertedPrototype] = await db
+      .insert(prototypesTable)
+      .values(testPrototypeData)
       .returning()
       .execute();
 
-    const createdPrototype = insertResult[0];
-
-    // Retrieve the prototype
-    const result = await getPrototype({ id: createdPrototype.id });
+    const result = await getPrototype(insertedPrototype.id);
 
     expect(result).not.toBeNull();
-    expect(result!.id).toBe(createdPrototype.id);
-    expect(result!.title).toBe('Test Prototype');
-    expect(result!.description).toBe('A prototype for testing retrieval');
-    expect(result!.target_audience).toBe('Software developers');
-    expect(result!.primary_goal).toBe('Test database operations');
-    expect(result!.key_features).toBe('CRUD operations, validation');
-    expect(result!.user_flow).toBe('Create -> Read -> Update -> Delete');
-    expect(result!.success_metrics).toBe('All operations complete successfully');
-    expect(result!.generated_ui_config).toBe(samplePrototype.generated_ui_config);
+    expect(result!.id).toEqual(insertedPrototype.id);
+    expect(result!.problem_or_goal_answer).toEqual(testPrototypeData.problem_or_goal_answer);
+    expect(result!.content_elements_answer).toEqual(testPrototypeData.content_elements_answer);
+    expect(result!.call_to_action_answer).toEqual(testPrototypeData.call_to_action_answer);
+    expect(result!.visual_elements_answer).toEqual(testPrototypeData.visual_elements_answer);
+    expect(result!.atmosphere_answer).toEqual(testPrototypeData.atmosphere_answer);
     expect(result!.created_at).toBeInstanceOf(Date);
     expect(result!.updated_at).toBeInstanceOf(Date);
   });
 
-  it('should return null for non-existent prototype', async () => {
-    const result = await getPrototype({ id: 999 });
+  it('should parse UI config correctly', async () => {
+    // Create test prototype
+    const [insertedPrototype] = await db
+      .insert(prototypesTable)
+      .values(testPrototypeData)
+      .returning()
+      .execute();
 
+    const result = await getPrototype(insertedPrototype.id);
+
+    expect(result).not.toBeNull();
+    expect(result!.generated_ui_config).toEqual(testUIConfig);
+    expect(result!.generated_ui_config.layout).toEqual('single-column');
+    expect(result!.generated_ui_config.theme).toEqual('minimal');
+    expect(result!.generated_ui_config.primary_color).toEqual('#2563eb');
+    expect(result!.generated_ui_config.components).toHaveLength(3);
+    
+    // Verify component structure
+    const heading = result!.generated_ui_config.components[0];
+    expect(heading.type).toEqual('heading');
+    expect(heading.content).toEqual('Simple Task Manager');
+    
+    const button = result!.generated_ui_config.components[2];
+    expect(button.type).toEqual('button');
+    expect(button.label).toEqual('Start Managing Tasks');
+    expect(button.action).toEqual('navigate_to_dashboard');
+  });
+
+  it('should return null for non-existent prototype', async () => {
+    const result = await getPrototype(999);
     expect(result).toBeNull();
   });
 
-  it('should handle prototype with null description', async () => {
-    // Create a prototype with null description
-    const prototypeWithNullDesc = {
-      ...samplePrototype,
-      description: null
+  it('should handle invalid UI config gracefully', async () => {
+    // Insert prototype with invalid UI config
+    const invalidUIConfig = {
+      layout: 'invalid-layout', // Invalid enum value
+      theme: 'minimal',
+      primary_color: '#2563eb',
+      components: []
     };
 
-    const insertResult = await db.insert(prototypesTable)
-      .values(prototypeWithNullDesc)
+    const [insertedPrototype] = await db
+      .insert(prototypesTable)
+      .values({
+        ...testPrototypeData,
+        generated_ui_config: invalidUIConfig
+      })
       .returning()
       .execute();
 
-    const createdPrototype = insertResult[0];
-
-    // Retrieve the prototype
-    const result = await getPrototype({ id: createdPrototype.id });
-
-    expect(result).not.toBeNull();
-    expect(result!.description).toBeNull();
-    expect(result!.title).toBe('Test Prototype');
+    // Should throw validation error due to invalid UI config
+    expect(async () => {
+      await getPrototype(insertedPrototype.id);
+    }).toThrow();
   });
 
-  it('should retrieve prototype with valid JSON config', async () => {
-    const insertResult = await db.insert(prototypesTable)
-      .values(samplePrototype)
+  it('should handle complex UI config with all component types', async () => {
+    const complexUIConfig: UIConfig = {
+      layout: 'two-column',
+      theme: 'modern',
+      primary_color: '#10b981',
+      components: [
+        {
+          id: 'heading-1',
+          type: 'heading',
+          content: 'Complex App'
+        },
+        {
+          id: 'input-1',
+          type: 'input',
+          label: 'Email Address',
+          placeholder: 'Enter your email'
+        },
+        {
+          id: 'image-1',
+          type: 'image',
+          content: 'hero-image.jpg',
+          styles: { width: '100%', height: '300px' }
+        },
+        {
+          id: 'list-1',
+          type: 'list',
+          items: ['Feature 1', 'Feature 2', 'Feature 3']
+        }
+      ]
+    };
+
+    const [insertedPrototype] = await db
+      .insert(prototypesTable)
+      .values({
+        ...testPrototypeData,
+        generated_ui_config: complexUIConfig
+      })
       .returning()
       .execute();
 
-    const createdPrototype = insertResult[0];
-    const result = await getPrototype({ id: createdPrototype.id });
+    const result = await getPrototype(insertedPrototype.id);
 
     expect(result).not.toBeNull();
+    expect(result!.generated_ui_config).toEqual(complexUIConfig);
+    expect(result!.generated_ui_config.components).toHaveLength(4);
     
-    // Verify the JSON config can be parsed
-    const parsedConfig = JSON.parse(result!.generated_ui_config);
-    expect(parsedConfig.layout).toBe('single-column');
-    expect(parsedConfig.theme).toBe('minimal');
-    expect(parsedConfig.primary_color).toBe('#007bff');
-    expect(Array.isArray(parsedConfig.components)).toBe(true);
-    expect(Array.isArray(parsedConfig.interactions)).toBe(true);
+    // Verify input component
+    const input = result!.generated_ui_config.components[1];
+    expect(input.type).toEqual('input');
+    expect(input.label).toEqual('Email Address');
+    expect(input.placeholder).toEqual('Enter your email');
+    
+    // Verify list component
+    const list = result!.generated_ui_config.components[3];
+    expect(list.type).toEqual('list');
+    expect(list.items).toEqual(['Feature 1', 'Feature 2', 'Feature 3']);
   });
 });

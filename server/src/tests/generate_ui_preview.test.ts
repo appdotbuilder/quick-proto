@@ -3,209 +3,172 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { resetDB, createDB } from '../helpers';
 import { db } from '../db';
 import { prototypesTable } from '../db/schema';
-import { type GetPrototypeInput, type UIConfig } from '../schema';
+import { type UIPreviewRequest, type UIConfig } from '../schema';
 import { generateUIPreview } from '../handlers/generate_ui_preview';
 
-// Test UI configuration
+// Test UI config matching the schema structure
 const testUIConfig: UIConfig = {
   layout: 'single-column',
   theme: 'minimal',
   primary_color: '#2563eb',
   components: [
     {
-      id: 'header-1',
+      id: 'heading-1',
+      type: 'heading',
+      content: 'Welcome to Our App'
+    },
+    {
+      id: 'text-1',
       type: 'text',
-      label: 'Welcome to Test App',
-      styles: { fontSize: '24px', fontWeight: 'bold' }
-    },
-    {
-      id: 'form-1',
-      type: 'form',
-      children: ['input-1', 'button-1']
-    },
-    {
-      id: 'input-1',
-      type: 'input',
-      placeholder: 'Enter your email',
-      label: 'Email'
+      content: 'This is a simple landing page'
     },
     {
       id: 'button-1',
       type: 'button',
-      label: 'Submit',
-      action: 'submit-form'
-    }
-  ],
-  interactions: [
-    {
-      trigger: 'button-1',
-      action: 'submit',
-      target: 'form-1'
+      label: 'Get Started',
+      action: 'navigate'
     }
   ]
 };
 
-// Test prototype data
-const testPrototype = {
-  title: 'Test Prototype',
-  description: 'A prototype for testing UI generation',
-  target_audience: 'Web developers',
-  primary_goal: 'Test UI configuration parsing',
-  key_features: 'Form submission, responsive design',
-  user_flow: 'User enters email and submits form',
-  success_metrics: 'Form completion rate',
-  generated_ui_config: JSON.stringify(testUIConfig)
+// Test input for UI preview request
+const testInput: UIPreviewRequest = {
+  prototype_id: 1
 };
 
 describe('generateUIPreview', () => {
   beforeEach(createDB);
   afterEach(resetDB);
 
-  it('should generate UI preview from stored configuration', async () => {
-    // Create test prototype
-    const insertResult = await db.insert(prototypesTable)
-      .values(testPrototype)
-      .returning()
+  it('should return UI config for existing prototype', async () => {
+    // Create test prototype with UI config
+    await db.insert(prototypesTable)
+      .values({
+        problem_or_goal_answer: 'Test problem',
+        content_elements_answer: 'Test content',
+        call_to_action_answer: 'Test action',
+        visual_elements_answer: 'Test visuals',
+        atmosphere_answer: 'Test atmosphere',
+        generated_ui_config: testUIConfig
+      })
       .execute();
 
-    const prototypeId = insertResult[0].id;
-    const input: GetPrototypeInput = { id: prototypeId };
+    const result = await generateUIPreview(testInput);
 
-    // Generate UI preview
-    const result = await generateUIPreview(input);
-
-    // Verify UI configuration structure
-    expect(result.layout).toEqual('single-column');
-    expect(result.theme).toEqual('minimal');
-    expect(result.primary_color).toEqual('#2563eb');
-    expect(result.components).toHaveLength(4);
-    expect(result.interactions).toHaveLength(1);
-
-    // Verify component details
-    const headerComponent = result.components.find(c => c.id === 'header-1');
-    expect(headerComponent).toBeDefined();
-    expect(headerComponent?.type).toEqual('text');
-    expect(headerComponent?.label).toEqual('Welcome to Test App');
-
-    const formComponent = result.components.find(c => c.id === 'form-1');
-    expect(formComponent).toBeDefined();
-    expect(formComponent?.type).toEqual('form');
-    expect(formComponent?.children).toEqual(['input-1', 'button-1']);
-
-    // Verify interactions
-    const interaction = result.interactions[0];
-    expect(interaction.trigger).toEqual('button-1');
-    expect(interaction.action).toEqual('submit');
-    expect(interaction.target).toEqual('form-1');
+    expect(result).not.toBeNull();
+    expect(result?.layout).toEqual('single-column');
+    expect(result?.theme).toEqual('minimal');
+    expect(result?.primary_color).toEqual('#2563eb');
+    expect(result?.components).toHaveLength(3);
+    expect(result?.components[0].type).toEqual('heading');
+    expect(result?.components[0].content).toEqual('Welcome to Our App');
+    expect(result?.components[2].type).toEqual('button');
+    expect(result?.components[2].label).toEqual('Get Started');
   });
 
-  it('should throw error for non-existent prototype', async () => {
-    const input: GetPrototypeInput = { id: 99999 };
+  it('should return null for non-existent prototype', async () => {
+    const result = await generateUIPreview({ prototype_id: 999 });
 
-    await expect(generateUIPreview(input)).rejects.toThrow(/Prototype with ID 99999 not found/i);
+    expect(result).toBeNull();
   });
 
-  it('should throw error for invalid JSON configuration', async () => {
-    // Create prototype with invalid JSON
-    const invalidPrototype = {
-      ...testPrototype,
-      generated_ui_config: '{ invalid json }'
-    };
-
-    const insertResult = await db.insert(prototypesTable)
-      .values(invalidPrototype)
-      .returning()
+  it('should validate UI config structure', async () => {
+    // Create prototype with valid UI config
+    await db.insert(prototypesTable)
+      .values({
+        problem_or_goal_answer: 'Test problem',
+        content_elements_answer: 'Test content',
+        call_to_action_answer: 'Test action',
+        visual_elements_answer: 'Test visuals',
+        atmosphere_answer: 'Test atmosphere',
+        generated_ui_config: {
+          layout: 'two-column',
+          theme: 'modern',
+          primary_color: '#10b981',
+          components: [
+            {
+              id: 'input-1',
+              type: 'input',
+              label: 'Email',
+              placeholder: 'Enter your email'
+            },
+            {
+              id: 'list-1',
+              type: 'list',
+              items: ['Item 1', 'Item 2', 'Item 3']
+            }
+          ]
+        }
+      })
       .execute();
 
-    const prototypeId = insertResult[0].id;
-    const input: GetPrototypeInput = { id: prototypeId };
+    const result = await generateUIPreview(testInput);
 
-    await expect(generateUIPreview(input)).rejects.toThrow(/Invalid UI configuration format/i);
+    expect(result).not.toBeNull();
+    expect(result?.layout).toEqual('two-column');
+    expect(result?.theme).toEqual('modern');
+    expect(result?.primary_color).toEqual('#10b981');
+    expect(result?.components).toHaveLength(2);
+    expect(result?.components[0].type).toEqual('input');
+    expect(result?.components[0].label).toEqual('Email');
+    expect(result?.components[0].placeholder).toEqual('Enter your email');
+    expect(result?.components[1].type).toEqual('list');
+    expect(result?.components[1].items).toEqual(['Item 1', 'Item 2', 'Item 3']);
   });
 
-  it('should handle complex UI configurations with multiple interactions', async () => {
+  it('should handle complex UI configurations', async () => {
     const complexUIConfig: UIConfig = {
-      layout: 'two-column',
-      theme: 'modern',
-      primary_color: '#10b981',
+      layout: 'centered',
+      theme: 'classic',
+      primary_color: '#7c3aed',
       components: [
         {
-          id: 'nav-1',
-          type: 'container',
-          children: ['button-nav-1', 'button-nav-2']
+          id: 'heading-main',
+          type: 'heading',
+          content: 'Complex Interface',
+          styles: { fontSize: '2rem', fontWeight: 'bold' }
         },
         {
-          id: 'button-nav-1',
-          type: 'button',
-          label: 'Home',
-          action: 'navigate'
+          id: 'image-hero',
+          type: 'image',
+          content: 'hero-image.jpg',
+          styles: { width: '100%', maxHeight: '400px' }
         },
         {
-          id: 'button-nav-2',
-          type: 'button',
-          label: 'About',
-          action: 'navigate'
-        },
-        {
-          id: 'main-content',
+          id: 'text-description',
           type: 'text',
-          label: 'Main content area'
-        }
-      ],
-      interactions: [
-        {
-          trigger: 'button-nav-1',
-          action: 'navigate',
-          target: 'home-page'
+          content: 'Detailed description of our service'
         },
         {
-          trigger: 'button-nav-2',
-          action: 'navigate',
-          target: 'about-page'
+          id: 'button-primary',
+          type: 'button',
+          label: 'Start Free Trial',
+          action: 'signup',
+          styles: { backgroundColor: '#7c3aed', color: 'white' }
         }
       ]
     };
 
-    const complexPrototype = {
-      ...testPrototype,
-      generated_ui_config: JSON.stringify(complexUIConfig)
-    };
-
-    const insertResult = await db.insert(prototypesTable)
-      .values(complexPrototype)
-      .returning()
+    await db.insert(prototypesTable)
+      .values({
+        problem_or_goal_answer: 'Complex problem',
+        content_elements_answer: 'Rich content',
+        call_to_action_answer: 'Start Free Trial',
+        visual_elements_answer: 'Hero image and styled elements',
+        atmosphere_answer: 'Professional and engaging',
+        generated_ui_config: complexUIConfig
+      })
       .execute();
 
-    const prototypeId = insertResult[0].id;
-    const input: GetPrototypeInput = { id: prototypeId };
+    const result = await generateUIPreview(testInput);
 
-    const result = await generateUIPreview(input);
-
-    expect(result.layout).toEqual('two-column');
-    expect(result.theme).toEqual('modern');
-    expect(result.primary_color).toEqual('#10b981');
-    expect(result.components).toHaveLength(4);
-    expect(result.interactions).toHaveLength(2);
-
-    // Verify navigation container
-    const navContainer = result.components.find(c => c.id === 'nav-1');
-    expect(navContainer?.type).toEqual('container');
-    expect(navContainer?.children).toEqual(['button-nav-1', 'button-nav-2']);
-
-    // Verify all interactions are preserved
-    expect(result.interactions).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          trigger: 'button-nav-1',
-          action: 'navigate',
-          target: 'home-page'
-        }),
-        expect.objectContaining({
-          trigger: 'button-nav-2',
-          action: 'navigate',
-          target: 'about-page'
-        })
-      ])
-    );
+    expect(result).not.toBeNull();
+    expect(result?.layout).toEqual('centered');
+    expect(result?.theme).toEqual('classic');
+    expect(result?.components).toHaveLength(4);
+    expect(result?.components[1].type).toEqual('image');
+    expect(result?.components[1].content).toEqual('hero-image.jpg');
+    expect(result?.components[0].styles).toEqual({ fontSize: '2rem', fontWeight: 'bold' });
+    expect(result?.components[3].action).toEqual('signup');
   });
 });
